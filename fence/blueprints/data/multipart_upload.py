@@ -1,5 +1,4 @@
-import boto3
-from botocore.exceptions import ClientError
+from awsclient.client.aws.boto import BotoManager
 from retry.api import retry_call
 
 from cdispyutils.hmac4 import generate_aws_presigned_url
@@ -23,29 +22,11 @@ def initilize_multipart_upload(bucket, key, credentials):
     Returns:
         UploadId(str): uploadId
     """
-    session = boto3.Session(
-        aws_access_key_id=credentials["aws_access_key_id"],
-        aws_secret_access_key=credentials["aws_secret_access_key"],
-        aws_session_token=credentials.get("aws_session_token"),
-    )
-    s3client = session.client("s3")
-
-    try:
-        multipart_upload = retry_call(
-            s3client.create_multipart_upload,
-            fkwargs={"Bucket": bucket, "Key": key},
-            tries=MAX_TRIES,
-            jitter=10,
-        )
-    except ClientError as error:
-        logger.error(
-            "Error when create multiple part upload for object with uuid {}. Detail {}".format(
-                key, error
-            )
-        )
-        raise InternalError("Can not initilize multipart upload for {}".format(key))
-
-    return multipart_upload.get("UploadId")
+    botomanager = BotoManager({'aws_access_key_id': credentials["aws_access_key_id"],
+                               'aws_secret_access_key': credentials["aws_secret_access_key"],
+                               'aws_session_token': credentials.get("aws_session_token")},
+                              logger)
+    return botomanager.initilize_multipart_upload(bucket, key, MAX_TRIES)
 
 
 def complete_multipart_upload(bucket, key, credentials, uploadId, parts):
@@ -64,35 +45,11 @@ def complete_multipart_upload(bucket, key, credentials, uploadId, parts):
     Return:
         None
     """
-    session = boto3.Session(
-        aws_access_key_id=credentials["aws_access_key_id"],
-        aws_secret_access_key=credentials["aws_secret_access_key"],
-        aws_session_token=credentials.get("aws_session_token"),
-    )
-    s3client = session.client("s3")
-
-    try:
-        retry_call(
-            s3client.complete_multipart_upload,
-            fkwargs={
-                "Bucket": bucket,
-                "Key": key,
-                "MultipartUpload": {"Parts": parts},
-                "UploadId": uploadId,
-            },
-            tries=MAX_TRIES,
-            jitter=10,
-        )
-    except ClientError as error:
-        logger.error(
-            "Error when completing multiple part upload for object with uuid {}. Detail {}".format(
-                key, error
-            )
-        )
-        raise InternalError(
-            "Can not complete multipart upload for {}. Detail {}".format(key, error)
-        )
-
+    botomanager = BotoManager({'aws_access_key_id': credentials["aws_access_key_id"],
+                               'aws_secret_access_key': credentials["aws_secret_access_key"],
+                               'aws_session_token': credentials.get("aws_session_token")},
+                              logger)
+    botomanager.complete_multipart_upload(bucket, key, uploadId, parts, MAX_TRIES)
 
 def generate_presigned_url_for_uploading_part(
     bucket, key, credentials, uploadId, partNumber, region, expires

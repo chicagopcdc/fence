@@ -327,9 +327,9 @@ def send_email_ses(body, to_emails, subject):
         #     self._format = 'text'
         #     body = self._text
     
-    botomanager = BotoManager({region_name: region,
-                               aws_access_key_id: AWS_ACCESS_KEY,
-                               aws_secret_access_key: AWS_SECRET_KEY},
+    botomanager = BotoManager({'region_name': region,
+                               'aws_access_key_id': AWS_ACCESS_KEY,
+                               'aws_secret_access_key': AWS_SECRET_KEY},
                                logger)
     botomanager.send_email(sender, RECIPIENT, subject, body, body, 'UTF-8')
     # try:

@@ -7,7 +7,6 @@ from random import SystemRandom
 import re
 import string
 import requests
-import boto3
 from urllib.parse import urlencode
 from urllib.parse import parse_qs, urlsplit, urlunsplit
 import sys
@@ -20,6 +19,7 @@ from werkzeug.datastructures import ImmutableMultiDict
 from fence.models import Client, User, query_for_user
 from fence.errors import NotFound, UserError
 from fence.config import config
+from awsclient.client.aws.boto import BotoManager
 
 
 rng = SystemRandom()
@@ -326,39 +326,38 @@ def send_email_ses(body, to_emails, subject):
         # if not self._html:
         #     self._format = 'text'
         #     body = self._text
-
-    client = boto3.client(
-        'ses',
-        region_name=region,
-        aws_access_key_id=AWS_ACCESS_KEY,
-        aws_secret_access_key=AWS_SECRET_KEY
-    )
-    try:
-        response = client.send_email(
-            Destination={
-                'ToAddresses': [RECIPIENT],
-            },
-            Message={
-                'Body': {
-                    'Text': {
-                        'Charset': 'UTF-8',
-                        'Data': body,
-                    },
-                },
-                'Subject': {
-                    'Charset': 'UTF-8',
-                    'Data': subject,
-                },
-            },
-            Source=sender,
-        )
-    except ClientError as e:
-        print(e.response['Error']['Message'])
-    else:
-        print("Email sent! Message ID:"),
-        print(response['MessageId'])
-    logging.warning(json.dumps(response))
-    return response
+    
+    botomanager = BotoManager({region_name: region,
+                               aws_access_key_id: AWS_ACCESS_KEY,
+                               aws_secret_access_key: AWS_SECRET_KEY},
+                               logger)
+    botomanager.send_email(sender, RECIPIENT, subject, body, body, 'UTF-8')
+    # try:
+    #     response = client.send_email(
+    #         Destination={
+    #             'ToAddresses': [RECIPIENT],
+    #         },
+    #         Message={
+    #             'Body': {
+    #                 'Text': {
+    #                     'Charset': 'UTF-8',
+    #                     'Data': body,
+    #                 },
+    #             },
+    #             'Subject': {
+    #                 'Charset': 'UTF-8',
+    #                 'Data': subject,
+    #             },
+    #         },
+    #         Source=sender,
+    #     )
+    # except ClientError as e:
+    #     print(e.response['Error']['Message'])
+    # else:
+    #     print("Email sent! Message ID:"),
+    #     print(response['MessageId'])
+    # logging.warning(json.dumps(response))
+    # return response
 
 def get_valid_expiration_from_request(
     expiry_param="expires_in", max_limit=None, default=None

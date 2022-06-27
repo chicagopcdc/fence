@@ -331,33 +331,8 @@ def send_email_ses(body, to_emails, subject):
                                'aws_access_key_id': AWS_ACCESS_KEY,
                                'aws_secret_access_key': AWS_SECRET_KEY},
                                logger)
-    botomanager.send_email(sender, RECIPIENT, subject, body, body, 'UTF-8')
-    # try:
-    #     response = client.send_email(
-    #         Destination={
-    #             'ToAddresses': [RECIPIENT],
-    #         },
-    #         Message={
-    #             'Body': {
-    #                 'Text': {
-    #                     'Charset': 'UTF-8',
-    #                     'Data': body,
-    #                 },
-    #             },
-    #             'Subject': {
-    #                 'Charset': 'UTF-8',
-    #                 'Data': subject,
-    #             },
-    #         },
-    #         Source=sender,
-    #     )
-    # except ClientError as e:
-    #     print(e.response['Error']['Message'])
-    # else:
-    #     print("Email sent! Message ID:"),
-    #     print(response['MessageId'])
-    # logging.warning(json.dumps(response))
-    # return response
+    botomanager.send_email(sender, RECIPIENT, subject, body, body, 'UTF-8', CONFIGURATION_SET=None)
+    #return responce no longer there
 
 def get_valid_expiration_from_request(
     expiry_param="expires_in", max_limit=None, default=None

@@ -19,7 +19,7 @@ from werkzeug.datastructures import ImmutableMultiDict
 from fence.models import Client, User, query_for_user
 from fence.errors import NotFound, UserError
 from fence.config import config
-from awsclient.client.aws.boto import BotoManager
+from aws_client.boto import BotoManager
 
 
 rng = SystemRandom()

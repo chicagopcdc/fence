@@ -1,4 +1,4 @@
-from awsclient.client.aws.boto import BotoManager
+from awws_client.boto import BotoManager
 from retry.api import retry_call
 
 from cdispyutils.hmac4 import generate_aws_presigned_url

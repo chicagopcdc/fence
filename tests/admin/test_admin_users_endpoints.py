@@ -2,10 +2,11 @@ from addict import Dict
 from flask import url_for
 import json
 import jwt
+from mock import patch, MagicMock, PropertyMock
 import pytest
-
+import requests
 from unittest.mock import Mock, patch
-
+import mock
 from fence.config import config
 from fence.models import (
     Bucket,
@@ -23,7 +24,7 @@ from fence.models import (
 )
 import fence.resources.admin as adm
 from tests import utils
-
+from tests import conftest
 
 @pytest.fixture(autouse=True)
 def mock_arborist(mock_arborist_requests):
@@ -250,6 +251,30 @@ def test_get_user_noauth(client, db_session):
     """GET /user: [get_all_users] but without authorization (access token)"""
     r = client.get("/admin/user")
     assert r.status_code == 401
+
+# GET /list_policies test
+
+def test_list_policies(mock_arborist_requests, client, admin_user, encoded_admin_jwt):
+    mock_arborist_requests({"arborist/policy/": {"GET": ({"policy_ids": ["policy-abc", "policy-xyz"]}, 200)}})
+    r = client.get(
+
+        "/admin/list_policies",
+
+        headers={
+
+            "Authorization": "Bearer " + encoded_admin_jwt,
+
+            "Content-Type": "application/json",
+
+        }
+
+    )
+    assert r is not None
+    res = r.json
+    policy1 = res["policy_ids"][0]
+    policy2 = res["policy_ids"][1]
+    assert policy1 == "policy-abc"
+    assert policy2 == "policy-xyz"
 
 
 # POST /user tests

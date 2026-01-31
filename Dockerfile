@@ -13,6 +13,7 @@ FROM quay.io/cdis/amazonlinux-base:${AZLINUX_BASE_VERSION} AS base
 ENV appname=fence
 
 WORKDIR /${appname}
+USER root
 RUN chown -R gen3:gen3 /${appname}
 RUN mkdir -p /amanuensis 
 

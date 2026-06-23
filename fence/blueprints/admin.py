@@ -1244,3 +1244,4 @@ def get_registered_users():
         u.username: u.additional_info["registration_info"] for u in registered_users
     }
     return registration_info_list
+

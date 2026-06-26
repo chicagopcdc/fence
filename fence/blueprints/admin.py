@@ -817,6 +817,53 @@ def add_policies_to_client():
 
     return jsonify("Success")
 
+@blueprint.route("/remove_policies_from_client", methods=["POST"])
+@admin_login_required
+@enable_request_logging
+def remove_policies_from_client():
+    '''
+    payload:
+    `{
+       "policy_names" = ["services.amanuensis-admin", "data_admin"],
+       "client_id" = "akjsdhoadoadshaouhasod1!"
+    }`
+    '''
+    body = request.get_json()
+    policy_names = body.get('policy_names', None)
+    client_id = body.get('client_id', None)
+    if client_id is None or policy_names is None or len(policy_names) < 1:
+        raise UserError("There are some missing parameters in the payload.")
+
+    try:
+        x = current_app.arborist.get_client(client_id)
+        current_policies = x['policies']
+        to_keep = list(set(current_policies) - set(policy_names))
+        current_app.arborist.update_client(client_id, to_keep)
+    except ArboristError as e:
+        current_app.logger.error(
+            "Failed to revoke policies `{}` from client `{}`: {}".format(
+                policy_names, client_id, str(e)
+            )
+        )
+        raise ArboristError(
+            "Error revoking policies from client {}".format(
+                client_id
+            )
+        )
+    
+    return jsonify("Success")
+
+
+@blueprint.route("/clients", methods=["GET"])
+@admin_login_required
+@enable_request_logging
+def get_all_clients():
+    """
+    Get the information of all clients from our database
+
+    Returns a json object.
+    """
+    return jsonify(admin.get_all_clients(current_app.scoped_session()))
 
 
 #### PROJECTS ####

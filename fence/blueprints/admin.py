@@ -854,6 +854,39 @@ def remove_policies_from_client():
     return jsonify("Success")
 
 
+@blueprint.route("/clients", methods=["POST"])
+@admin_login_required
+@enable_request_logging
+def create_client():
+    """
+    Creates a client in the database
+
+    """
+    body = request.get_json()
+    policy_names = body.get('policy_names', None)
+    client_id = body.get('client_id', None)
+    
+    if client_id is None:
+        raise UserError("There are some missing parameters in the payload.")
+
+    try:
+        current_app.arborist.create_client(
+            client_id, policy_names
+        )
+    except ArboristError as e:
+        self.logger.info(
+            "not creating client with id `{}`; {}".format(
+                client_id, str(e)
+            )
+        )
+        raise ArboristError(
+            "Error creating client {}".format(
+                client_id
+            )
+        )
+
+    return jsonify("Success")
+
 #### PROJECTS ####
 @blueprint.route("/projects/<projectname>", methods=["GET"])
 @admin_login_required

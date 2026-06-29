@@ -854,18 +854,6 @@ def remove_policies_from_client():
     return jsonify("Success")
 
 
-@blueprint.route("/clients", methods=["GET"])
-@admin_login_required
-@enable_request_logging
-def get_all_clients():
-    """
-    Get the information of all clients from our database
-
-    Returns a json object.
-    """
-    return jsonify(admin.get_all_clients(current_app.scoped_session()))
-
-
 #### PROJECTS ####
 @blueprint.route("/projects/<projectname>", methods=["GET"])
 @admin_login_required

@@ -777,6 +777,22 @@ def add_document():
 
 
 #### CLIENT ####
+@blueprint.route("/clients", methods=["GET"])
+@admin_login_required
+@enable_request_logging
+def get_all_clients():
+    """
+    Get all clients from Arborist.
+
+    Returns a json object.
+    """
+    try:
+        return jsonify(current_app.arborist.list_clients())
+    except ArboristError as e:
+        current_app.logger.error("Failed to list clients: %s", str(e))
+        raise ArboristError("Error listing clients")
+
+
 @blueprint.route("/add_policies_to_client", methods=["POST"])
 @admin_login_required
 @enable_request_logging

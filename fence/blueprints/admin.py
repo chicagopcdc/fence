@@ -835,8 +835,8 @@ def remove_policies_from_client():
         raise UserError("There are some missing parameters in the payload.")
 
     try:
-        x = current_app.arborist.get_client(client_id)
-        current_policies = x['policies']
+        client = current_app.arborist.get_client(client_id)
+        current_policies = client['policies']
         to_keep = list(set(current_policies) - set(policy_names))
         current_app.arborist.update_client(client_id, to_keep)
     except ArboristError as e:

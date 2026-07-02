@@ -900,6 +900,14 @@ def create_client():
     if client_id is None:
         raise UserError("There are some missing parameters in the payload.")
 
+    fence_client = (
+        current_app.scoped_session().query(Client).filter(Client.client_id == client_id).first()
+    )
+    if fence_client is None:
+        raise UserError(
+            f"Client ID '{client_id}' does not exist in the Fence client table."
+        )
+
     try:
         current_app.arborist.create_client(
             client_id, policy_names

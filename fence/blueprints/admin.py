@@ -18,7 +18,7 @@ from fence.resources.audit.utils import enable_request_logging
 from fence.resources import admin
 from fence.scripting.fence_create import sync_users
 from fence.config import config
-from fence.models import User, DocumentSchema
+from fence.models import User, DocumentSchema, Client
 from fence.errors import UserError, NotFound, InternalError
 
 
@@ -853,6 +853,47 @@ def remove_policies_from_client():
     
     return jsonify("Success")
 
+
+@blueprint.route("/clients", methods=["POST"])
+@admin_login_required
+@enable_request_logging
+def create_client():
+    """
+    Creates a client in the database
+
+    """
+    body = request.get_json()
+    policy_names = body.get('policy_names', None)
+    client_id = body.get('client_id', None)
+    
+    if client_id is None:
+        raise UserError("There are some missing parameters in the payload.")
+
+    fence_client = (
+        current_app.scoped_session().query(Client).filter(Client.client_id == client_id).first()
+    )
+    if fence_client is None:
+        raise UserError(
+            f"Client ID '{client_id}' does not exist in the Fence client table."
+        )
+
+    try:
+        current_app.arborist.create_client(
+            client_id, policy_names
+        )
+    except ArboristError as e:
+        self.logger.info(
+            "not creating client with id `{}`; {}".format(
+                client_id, str(e)
+            )
+        )
+        raise ArboristError(
+            "Error creating client {}".format(
+                client_id
+            )
+        )
+
+    return jsonify("Success")
 
 #### PROJECTS ####
 @blueprint.route("/projects/<projectname>", methods=["GET"])

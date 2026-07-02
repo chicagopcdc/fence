@@ -18,7 +18,7 @@ from fence.resources.audit.utils import enable_request_logging
 from fence.resources import admin
 from fence.scripting.fence_create import sync_users
 from fence.config import config
-from fence.models import User, DocumentSchema, Client
+from fence.models import Client, User, DocumentSchema
 from fence.errors import UserError, NotFound, InternalError
 
 
@@ -777,6 +777,37 @@ def add_document():
 
 
 #### CLIENT ####
+@blueprint.route("/clients", methods=["GET"])
+@admin_login_required
+@enable_request_logging
+def get_all_clients():
+    """
+    Get all clients from Arborist.
+
+    Returns a json object.
+    """
+    try:
+        arborist_response = current_app.arborist.list_clients()
+    except ArboristError as e:
+        current_app.logger.error("Failed to list clients: %s", str(e))
+        raise ArboristError("Error listing clients")
+    
+    arborist_clients = arborist_response.get("clients", [])
+    client_ids = []
+    for ac in arborist_clients:
+        client_ids.append((ac.get("clientID")))
+    
+    with current_app.scoped_session() as session:
+        clients_in_db = (session.query(Client).filter(Client.client_id.in_(client_ids)).all())
+
+    name_id = {client.client_id: client.name for client in clients_in_db}
+
+    for ac in arborist_clients:
+        ac["name"] = name_id.get(ac.get("clientID"))
+    
+    return jsonify(arborist_clients)
+
+
 @blueprint.route("/add_policies_to_client", methods=["POST"])
 @admin_login_required
 @enable_request_logging

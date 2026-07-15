@@ -777,6 +777,33 @@ def add_document():
 
 
 #### CLIENT ####
+@blueprint.route("/clients/fence", methods=["GET"])
+@admin_login_required
+@enable_request_logging
+def get_all_fence_clients():
+    """Get the clients available in the Fence database.
+
+    This intentionally returns only the fields needed to select a client for
+    synchronization with Arborist. In particular, client secrets and OAuth
+    metadata are not exposed by this administrative listing endpoint.
+    """
+    with current_app.scoped_session() as session:
+        fence_clients = (
+            session.query(Client).order_by(Client.name, Client.client_id).all()
+        )
+
+        clients = [
+            {
+                "client_id": client.client_id,
+                "name": client.name,
+                "description": client.description,
+            }
+            for client in fence_clients
+        ]
+
+    return jsonify(clients)
+
+
 @blueprint.route("/clients", methods=["GET"])
 @admin_login_required
 @enable_request_logging
@@ -909,6 +936,10 @@ def create_client():
         )
 
     try:
+        arborist_clients = current_app.arborist.list_clients().get("clients", [])
+        if any(client.get("clientID") == client_id for client in arborist_clients):
+            return jsonify("Success")
+
         current_app.arborist.create_client(
             client_id, policy_names
         )
@@ -1351,4 +1382,3 @@ def get_registered_users():
         u.username: u.additional_info["registration_info"] for u in registered_users
     }
     return registration_info_list
-

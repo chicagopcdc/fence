@@ -936,8 +936,8 @@ def create_client():
         )
 
     try:
-        arborist_clients = current_app.arborist.list_clients().get("clients", [])
-        if any(client.get("clientID") == client_id for client in arborist_clients):
+        existing_client = current_app.arborist.get_client(client_id)
+        if existing_client is not None:
             return jsonify("Success")
 
         current_app.arborist.create_client(

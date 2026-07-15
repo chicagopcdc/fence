@@ -77,8 +77,8 @@ def test_create_client_skips_client_already_in_arborist(
 
     with mock.patch.object(
         client.application.arborist,
-        "list_clients",
-        return_value={"clients": [{"clientID": client_id}]},
+        "get_client",
+        return_value={"clientID": client_id},
     ), mock.patch.object(
         client.application.arborist, "create_client"
     ) as create_client:
@@ -102,8 +102,8 @@ def test_create_client_creates_client_missing_from_arborist(
 
     with mock.patch.object(
         client.application.arborist,
-        "list_clients",
-        return_value={"clients": []},
+        "get_client",
+        return_value=None,
     ), mock.patch.object(
         client.application.arborist, "create_client"
     ) as create_client:

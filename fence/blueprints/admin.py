@@ -18,7 +18,7 @@ from fence.resources.audit.utils import enable_request_logging
 from fence.resources import admin
 from fence.scripting.fence_create import sync_users
 from fence.config import config
-from fence.models import User, DocumentSchema
+from fence.models import Client, User, DocumentSchema
 from fence.errors import UserError, NotFound, InternalError
 
 
@@ -777,6 +777,64 @@ def add_document():
 
 
 #### CLIENT ####
+@blueprint.route("/clients/fence", methods=["GET"])
+@admin_login_required
+@enable_request_logging
+def get_all_fence_clients():
+    """Get the clients available in the Fence database.
+
+    This intentionally returns only the fields needed to select a client for
+    synchronization with Arborist. In particular, client secrets and OAuth
+    metadata are not exposed by this administrative listing endpoint.
+    """
+    with current_app.scoped_session() as session:
+        fence_clients = (
+            session.query(Client).order_by(Client.name, Client.client_id).all()
+        )
+
+        clients = [
+            {
+                "client_id": client.client_id,
+                "name": client.name,
+                "description": client.description,
+            }
+            for client in fence_clients
+        ]
+
+    return jsonify(clients)
+
+
+@blueprint.route("/clients", methods=["GET"])
+@admin_login_required
+@enable_request_logging
+def get_all_clients():
+    """
+    Get all clients from Arborist.
+
+    Returns a json object.
+    """
+    try:
+        arborist_response = current_app.arborist.list_clients()
+    except ArboristError as e:
+        current_app.logger.error("Failed to list clients: %s", str(e))
+        raise ArboristError("Error listing clients")
+    
+    arborist_clients = arborist_response.get("clients", [])
+    client_ids = []
+    for ac in arborist_clients:
+        client_ids.append((ac.get("clientID")))
+    
+    with current_app.scoped_session() as session:
+        clients_in_db = (session.query(Client).filter(Client.client_id.in_(client_ids)).all())
+
+    name_id = {client.client_id: client.name for client in clients_in_db}
+
+    for ac in arborist_clients:
+        ac["name"] = name_id.get(ac.get("clientID"))
+    
+    return jsonify(arborist_clients)
+
+
 @blueprint.route("/add_policies_to_client", methods=["POST"])
 @admin_login_required
 @enable_request_logging
@@ -817,7 +875,87 @@ def add_policies_to_client():
 
     return jsonify("Success")
 
+@blueprint.route("/remove_policies_from_client", methods=["POST"])
+@admin_login_required
+@enable_request_logging
+def remove_policies_from_client():
+    '''
+    payload:
+    `{
+       "policy_names" = ["services.amanuensis-admin", "data_admin"],
+       "client_id" = "akjsdhoadoadshaouhasod1!"
+    }`
+    '''
+    body = request.get_json()
+    policy_names = body.get('policy_names', None)
+    client_id = body.get('client_id', None)
+    if client_id is None or policy_names is None or len(policy_names) < 1:
+        raise UserError("There are some missing parameters in the payload.")
 
+    try:
+        client = current_app.arborist.get_client(client_id)
+        current_policies = client['policies']
+        to_keep = list(set(current_policies) - set(policy_names))
+        current_app.arborist.update_client(client_id, to_keep)
+    except ArboristError as e:
+        current_app.logger.error(
+            "Failed to revoke policies `{}` from client `{}`: {}".format(
+                policy_names, client_id, str(e)
+            )
+        )
+        raise ArboristError(
+            "Error revoking policies from client {}".format(
+                client_id
+            )
+        )
+    
+    return jsonify("Success")
+
+
+@blueprint.route("/clients", methods=["POST"])
+@admin_login_required
+@enable_request_logging
+def create_client():
+    """
+    Creates a client in the database
+
+    """
+    body = request.get_json()
+    policy_names = body.get('policy_names', None)
+    client_id = body.get('client_id', None)
+    
+    if client_id is None:
+        raise UserError("There are some missing parameters in the payload.")
+
+    fence_client = (
+        current_app.scoped_session().query(Client).filter(Client.client_id == client_id).first()
+    )
+    if fence_client is None:
+        raise UserError(
+            f"Client ID '{client_id}' does not exist in the Fence client table."
+        )
+
+    try:
+        existing_client = current_app.arborist.get_client(client_id)
+        if existing_client is not None:
+            return jsonify("Success")
+
+        current_app.arborist.create_client(
+            client_id, policy_names
+        )
+    except ArboristError as e:
+        self.logger.info(
+            "not creating client with id `{}`; {}".format(
+                client_id, str(e)
+            )
+        )
+        raise ArboristError(
+            "Error creating client {}".format(
+                client_id
+            )
+        )
+
+    return jsonify("Success")
 
 #### PROJECTS ####
 @blueprint.route("/projects/<projectname>", methods=["GET"])
@@ -1244,4 +1382,3 @@ def get_registered_users():
         u.username: u.additional_info["registration_info"] for u in registered_users
     }
     return registration_info_list
-

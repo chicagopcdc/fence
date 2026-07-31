@@ -1,7 +1,10 @@
 from functools import wraps
 import json
 
+from cdislogging import get_logger
+from fence import config
 import flask
+from gen3authz.utils import is_path_prefix_of_path
 from pcdcutils.gen3 import Gen3RequestManager, SignaturePayload
 
 from fence.authz.errors import ArboristError
@@ -16,89 +19,139 @@ logger = get_logger(__name__, log_level="debug")
 
 
 
-def check_arborist_auth(resource, method, constraints=None, check_signature=False):
-    """
-    Check with arborist to verify the authz for a request.
 
-    TODO (rudyardrichter, 2018-12-21):
-    update as necessary as changes happen to ABAC & arborist
+def authorize(resource, method, constraints=None, check_signature=False):
+    """
+    Check with arborist to verify the authz for a request. Throws a ``Forbidden`` error if the user is not authorized to access the resource.
 
     Args:
-        resource (str):
+        resource (str or list[str]):
             Identifier for the thing being accessed. These look like filepaths. This
             ``resource`` must correspond to some resource entered previously in
             arborist. Currently the existing resources are going to be the
             program/projects set up by the user sync.
-        method (str):
+        method (str or list[str]):
             Identifier for the action the user is trying to do. Like ``resource``, this
             is something that has to exist in arborist already.
-        constraints (Optional[Dict[str, str]]):
-            Optional set of constraints to send to arborist for context on this request.
-            (These really aren't used at all yet.)
+    """
+    if not hasattr(flask.current_app, "arborist"):
+        raise Forbidden(
+            "this fence instance is not configured with arborist;"
+            " this endpoint is unavailable"
+        )
+    if "Authorization" not in flask.request.headers:
+        logger.debug("request missing Authorization header; treating as anonymous")
+        token = None
+    else:
+        token = get_jwt_header()
+
+    if not flask.current_app.arborist.auth_request(
+        jwt=token,
+        service="fence",
+        methods=method,
+        resources=resource,
+    ):
+        if check_signature:
+            headers = dict(flask.request.headers)
+            method_s = flask.request.method 
+            path = flask.request.url #flask.request.path
+            body = None
+            if method_s in ['POST', 'PUT', 'PATCH']:
+                body = flask.request.get_json(silent=True)
+
+            g3rm = Gen3RequestManager(headers=headers)
+
+            if g3rm.is_gen3_signed():
+                # --- PUBLIC_KEY guard ---
+                public_key = config.get("AMANUENSIS_PUBLIC_KEY")
+                if not public_key:
+                    logger.error(
+                        "No PUBLIC_KEY configured — cannot validate signature"
+                    )
+                    raise Forbidden(
+                        "Missing PUBLIC_KEY — cannot validate signature"
+                    )
+
+                # --- Prepare SignaturePayload ---
+                payload = SignaturePayload(
+                    method=method_s,
+                    path=path,
+                    headers={
+                        "Gen3-Service": headers.get(
+                            "Gen3-Service"
+                        )
+                    },
+                    body = json.dumps(body, separators=(",", ":"))
+                )
+
+                if not g3rm.valid_gen3_signature(payload, config):
+                    raise Forbidden("Gen3 signed request is invalid")
+            else:
+                raise Forbidden(
+                    "user does not have privileges to access this endpoint and the signature is not present."
+                )
+        else:
+            raise Forbidden("user does not have privileges to access this endpoint")
+
+
+def check_arborist_auth(resource, method, constraints=None, check_signature=False):
+    """
+    Same as `authorize`, but as a decorator.
 
     Return:
         Callable: decorator
     """
-    constraints = constraints or {}
 
     def decorator(f):
         @wraps(f)
         def wrapper(*f_args, **f_kwargs):
-            if not hasattr(flask.current_app, "arborist"):
-                raise Forbidden(
-                    "this fence instance is not configured with arborist;"
-                    " this endpoint is unavailable"
-                )
-            if not flask.current_app.arborist.auth_request(
-                jwt=get_jwt_header(),
-                service="fence",
-                methods=method,
-                resources=resource,
-            ):
-                if check_signature:
-                    headers = dict(flask.request.headers)
-                    method_s = flask.request.method 
-                    path = flask.request.url #flask.request.path
-                    body = None
-                    if method_s in ['POST', 'PUT', 'PATCH']:
-                        body = flask.request.get_json(silent=True)
-    
-                    g3rm = Gen3RequestManager(headers=headers)
-
-                    if g3rm.is_gen3_signed():
-                        # --- PUBLIC_KEY guard ---
-                        public_key = config.get("AMANUENSIS_PUBLIC_KEY")
-                        if not public_key:
-                            logger.error(
-                                "No PUBLIC_KEY configured — cannot validate signature"
-                            )
-                            raise Forbidden(
-                                "Missing PUBLIC_KEY — cannot validate signature"
-                            )
-
-                        # --- Prepare SignaturePayload ---
-                        payload = SignaturePayload(
-                            method=method_s,
-                            path=path,
-                            headers={
-                                "Gen3-Service": headers.get(
-                                    "Gen3-Service"
-                                )
-                            },
-                            body = json.dumps(body, separators=(",", ":"))
-                        )
-
-                        if not g3rm.valid_gen3_signature(payload, config):
-                            raise Forbidden("Gen3 signed request is invalid")
-                    else:
-                        raise Forbidden(
-                            "user does not have privileges to access this endpoint and the signature is not present."
-                        )
+            authorize(resource, method, constraints, check_signature)
             return f(*f_args, **f_kwargs)
 
         return wrapper
 
     return decorator
+
+
+def can_user_get_task_token(task_token_type: str, expires_in: int) -> bool:
+    """
+    Checks a requested expiration against the user's authz.
+    Example: a user with access to `/services/fence/task-token/FOO/100` can request a
+    task token of type "FOO" that expires exactly in 100 seconds.
+
+    A user with access to `/services/fence/task-token/FOO` (no exact value)
+    can request a task token of any expiration.
+
+    Args:
+        task_token_type (str): the type of task token being requested
+        expires_in (int): the requested expiration in seconds
+
+    Returns:
+        bool: True if the user is authorized to request a task token of the given type and expiration, False otherwise
+    """
+
+    if not isinstance(expires_in, int) or isinstance(expires_in, bool):
+        return False
+    if expires_in <= 0:
+        return False
+
+    max_task_token_ttl = config["MAX_TASK_TOKEN_TTL"].get(
+        task_token_type, config["MAX_ACCESS_TOKEN_TTL"]
+    )
+    if expires_in > max_task_token_ttl:
+        return False
+
+    # Check if the user has a policy providing access to create a task token
+    # of the requested type and expiration.
+    # Note: Arborist policies are hierarchical, so a policy granting access to `/services/fence/task-token/FOO` (no expiration)
+    # will also grant access to `/services/fence/task-token/FOO/100`.
+    resource_path = f"/services/fence/task-token/{task_token_type}/{expires_in}"
+
+    try:
+        authorize(resource=resource_path, method="create")
+        return True
+    except Forbidden:
+        return False
 
 
 def register_arborist_user(user, policies=None):
@@ -176,3 +229,4 @@ def remove_permission(username=None, policies=None):
                             )
                         )
     return "200"
+

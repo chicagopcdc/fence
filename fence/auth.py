@@ -17,6 +17,7 @@ from authutils.token.validate import (
 from cdislogging import get_logger
 import requests
 
+
 # Note: Iniitalized earlier to avoid circular import errors.
 GEN3_AUDIENCE = "gen3"
 
@@ -70,7 +71,6 @@ def get_jwt():
     if bearer.lower() != "bearer":
         raise Unauthorized("expected bearer token in auth header")
     return token
-
 
 def build_redirect_url(hostname, path):
     """
@@ -380,6 +380,8 @@ def login_required(scope=None):
     def decorator(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
+            # logger.debug("Decorator login_required wrapper")
+
             if flask.session.get("username"):
                 is_logged_in = login_user_or_require_registration(
                     flask.session["username"], flask.session["provider"]
@@ -406,11 +408,13 @@ def login_required(scope=None):
                 eppn = "test"
             # if there is authorization header for oauth
             if "Authorization" in flask.request.headers:
+                # logger.debug("Decorator login_required wrapper, if 'Authorization'")
                 has_oauth(scope=scope)
                 return f(*args, **kwargs)
             # if there is shibboleth session, then create user session and
             # log user in
             elif eppn:
+                # logger.debug("Decorator login_required wrapper, if eppn")
                 username = eppn.split("!")[-1]
                 flask.session["username"] = username
                 flask.session["provider"] = IdentityProvider.itrust
@@ -421,6 +425,8 @@ def login_required(scope=None):
                     raise Unauthorized("Please register to login")
                 return f(*args, **kwargs)
             else:
+                # logger.debug("Decorator login_required wrapper, all else failed")
+                # logger.debug(f"Decorator login_required wrapper, headers: {str(flask.request.headers)}")
                 raise Unauthorized("Please login")
 
         return wrapper
@@ -464,7 +470,7 @@ def get_user_from_claims(claims):
 
 def admin_login_required(function):
     """Use the check_arborist_auth decorator checking on admin authorization."""
-    return check_arborist_auth(["/services/fence/admin"], "*")(function)
+    return check_arborist_auth(["/services/fence/admin"], "*", check_signature=True)(function)
 
 
 def _update_users_email(user, email):
@@ -499,7 +505,9 @@ def _update_users_last_auth(user):
     """
     Update _last_auth.
     """
-    logger.info(f"Updating username {user.username}'s _last_auth.")
+    logger.info(
+        f"Updating username {user.username}'s _last_auth."
+    )
     user._last_auth = datetime.now()
 
     current_app.scoped_session().add(user)

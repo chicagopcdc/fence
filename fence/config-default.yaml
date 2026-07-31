@@ -1,4 +1,3 @@
----
 ############################### Fence Configuration ####################################
 # This file contains various configurations for the Fence microservice.
 #
@@ -25,6 +24,9 @@
 APP_NAME: 'Gen3 Data Commons'
 # Where fence microservice is deployed
 BASE_URL: 'http://localhost/user'
+# a standardized name unique to each app for service-to-service interaction
+# so the service receiving the request knows it came from another Gen3 service
+SERVICE_NAME: 'fence'
 # postgres db to connect to
 # connection url format:
 #     postgresql://[user[:password]@][netloc][:port][/dbname]
@@ -38,6 +40,9 @@ DB: 'postgresql://test:test@localhost:5432/fence'
 #     key = base64.urlsafe_b64encode(os.urandom(32))
 #     print(key)
 ENCRYPTION_KEY: ''
+
+# Cross-service keys
+AMANUENSIS_PUBLIC_KEY_PATH: '/amanuensis/jwt_public_key.pem'
 
 # //////////////////////////////////////////////////////////////////////////////////////
 # DEBUG & SECURITY SETTINGS
@@ -568,6 +573,9 @@ MAX_BULK_CONTENT_GUIDS_COUNT: 500
 # PRIVACY_POLICY_URL, or default to the `static/privacy_policy.md` file in fence.
 PRIVACY_POLICY_URL: null
 
+DOCUMENT_TYPES: ['privacy-policy', 'terms-and-conditions', 'survival-user-agreement', 'data-portal-user-guide']
+INITIAL_DOCUMENTS: {}
+
 # //////////////////////////////////////////////////////////////////////////////////////
 # RELIABILITY OPTS
 # //////////////////////////////////////////////////////////////////////////////////////
@@ -866,6 +874,10 @@ ARBORIST: 'http://arborist-service'
 
 # time in seconds to wait for arborist to respond to requests from fence
 ARBORIST_TIMEOUT: 30
+
+BASIC_REGISTRATION_ACCESS_POLICY: [login_no_access, analysis]
+
+
 # url where the audit-service is running
 AUDIT_SERVICE: 'http://audit-service'
 ENABLE_AUDIT_LOGS:
@@ -961,6 +973,30 @@ GUN_MAIL:
 EMAIL_SERVER: 'localhost'
 SEND_FROM: 'example@gmail.com'
 SEND_TO: 'example@gmail.com'
+
+# //////////////////////////////////////////////////////////////////////////////////////
+# EMAIL
+#   - Support for sending hubspot API work updates to project management team
+# //////////////////////////////////////////////////////////////////////////////////////
+# Simple Email Service (for sending emails from fence)
+#
+# NOTE: Example in comments below
+AWS_SES:
+  SENDER: ""
+  RECIPIENT: ""
+  AWS_REGION: "us-east-1"
+  AWS_ACCESS_KEY: ""
+  AWS_SECRET_KEY: ""
+
+HUBSPOT:
+  API_KEY: ""
+
+MAILCHIMP:
+  API_KEY: ""
+  SERVER_PREFIX: ""
+  LIST_ID: "" 
+  GROUP_CATEGORY_NAME: "Applications"
+  GROUP_NAMES: [""]
 
 # //////////////////////////////////////////////////////////////////////////////////////
 # DATA ACCESS: GOOGLE LINKING & SERVICE ACCOUNT REGISTRATION

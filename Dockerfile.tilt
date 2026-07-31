@@ -88,4 +88,6 @@ RUN sed -i 's/KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,ecdh-
 USER gen3
 COPY --chown=gen3:gen3 --from=builder /$appname /$appname
 
-CMD ["/bin/bash", "-c", "/fence/dockerrun.bash"]
+
+RUN pip install watchdog[watchmedo]
+CMD ["sh", "-c", "cd /fence && watchmedo auto-restart --directory=./ --pattern='*.py' --recursive -- /bin/bash -c /fence/dockerrun.bash"]

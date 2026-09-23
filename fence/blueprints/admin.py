@@ -603,6 +603,91 @@ def list_policies():
         res = current_app.arborist.list_policies()
     return jsonify(res)
 
+@blueprint.route("/list_roles", methods=["GET"])
+@admin_login_required
+@enable_request_logging
+def list_roles():
+    """
+    Return a list of all roles. Returns in JSON format.
+
+    Call this endpoint: `curl -H "Authorization: Bearer <access_token>" <hostname>/user/admin/list_roles`
+
+    A policy names the roles it grants, so anything building a policy needs to
+    know which roles exist.
+    """
+    return jsonify(current_app.arborist.list_roles())
+
+
+@blueprint.route("/list_resources", methods=["GET"])
+@admin_login_required
+@enable_request_logging
+def list_resources():
+    """
+    Return the resource tree. Returns in JSON format.
+
+    Call this endpoint: `curl -H "Authorization: Bearer <access_token>" <hostname>/user/admin/list_resources`
+
+    The counterpart of list_roles: a policy names resource paths too.
+    """
+    return jsonify(current_app.arborist.list_resources())
+
+
+@blueprint.route("/remove_policy/<path:policy_id>", methods=["DELETE"])
+@admin_login_required
+@enable_request_logging
+def remove_policy(policy_id):
+    """
+    Call this endpoint: `curl -X DELETE -H "Authorization: Bearer <access_token>" <hostname>/user/admin/remove_policy/services.amanuensis-admin`
+
+    Deleting a policy revokes it from every user and client that held it.
+    """
+    policy = current_app.arborist.get_policy(policy_id)
+    if policy is None:
+        raise NotFound("Policy {} not found.".format(policy_id))
+
+    current_app.arborist.delete_policy(policy_id)
+    logger.info("Deleted policy {}".format(policy_id))
+
+    return jsonify({"deleted": policy_id})
+
+
+@blueprint.route("/remove_role/<path:role_id>", methods=["DELETE"])
+@admin_login_required
+@enable_request_logging
+def remove_role(role_id):
+    """
+    Call this endpoint: `curl -X DELETE -H "Authorization: Bearer <access_token>" <hostname>/user/admin/remove_role/amanuensis_admin`
+
+    Arborist's policy_role rows cascade on role delete, so removing a role that
+    policies still name does not fail — it quietly strips the role from each of
+    them, and a policy left holding no roles grants nothing. That is a silent
+    loss of access, so refuse by default and report who is using it. Pass
+    `?force=true` to delete anyway.
+    """
+    roles = current_app.arborist.list_roles()
+    if role_id not in [role["id"] for role in roles["roles"]]:
+        raise NotFound("Role {} not found.".format(role_id))
+
+    force = request.args.get("force", default="").lower() == "true"
+    dependent_policies = [
+        policy["id"]
+        for policy in current_app.arborist.list_policies(True).get("policies", [])
+        if role_id in [role["id"] for role in policy.get("roles", [])]
+    ]
+    if dependent_policies and not force:
+        raise UserError(
+            "Role {} is still used by these policies: {}. Remove it from them"
+            " first, or repeat this call with ?force=true.".format(
+                role_id, ", ".join(sorted(dependent_policies))
+            )
+        )
+
+    current_app.arborist.delete_role(role_id)
+    logger.info("Deleted role {}".format(role_id))
+
+    return jsonify({"deleted": role_id, "affected_policies": sorted(dependent_policies)})
+
+
 @blueprint.route("/arborist_user/<username>", methods=["GET"])
 @admin_login_required
 @enable_request_logging

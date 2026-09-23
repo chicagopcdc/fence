@@ -438,7 +438,15 @@ def mock_arborist_requests(request):
             else:
                 content, code = urls_to_responses[url][method]
                 mocked_response.status_code = code
-                if isinstance(content, dict):
+                if code == 204:
+                    # arborist sends no body with a 204, so calling .json() on
+                    # one raises. Without this the mock is more forgiving than
+                    # the real service and hides a missing expect_json=False.
+                    mocked_response.text = ""
+                    mocked_response.json.side_effect = ValueError(
+                        "No JSON content in 204 response"
+                    )
+                elif isinstance(content, dict):
                     mocked_response.json.return_value = content
                 else:
                     mocked_response.text = content

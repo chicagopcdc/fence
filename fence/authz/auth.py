@@ -2,7 +2,6 @@ from functools import wraps
 import json
 
 from cdislogging import get_logger
-from fence import config
 import flask
 from gen3authz.utils import is_path_prefix_of_path
 from pcdcutils.gen3 import Gen3RequestManager, SignaturePayload
@@ -12,15 +11,12 @@ from fence.errors import Forbidden, Unauthorized, NotFound
 from fence.jwt.utils import get_jwt_header
 from fence.config import config
 
-from cdislogging import get_logger
 # Can't read config yet. Just set to debug for now, else no handlers.
 # Later, in app_config(), will actually set level based on config
 logger = get_logger(__name__, log_level="debug")
 
 
-
-
-def authorize(resource, method, constraints=None, check_signature=False):
+def authorize(resource, method, constraints=None, check_signature=False, token=None):
     """
     Check with arborist to verify the authz for a request. Throws a ``Forbidden`` error if the user is not authorized to access the resource.
 
@@ -33,17 +29,20 @@ def authorize(resource, method, constraints=None, check_signature=False):
         method (str or list[str]):
             Identifier for the action the user is trying to do. Like ``resource``, this
             is something that has to exist in arborist already.
+        token (str):
+            If not provided, falls back to the token provided in the `Authorization` header.
     """
-    if not hasattr(flask.current_app, "arborist"):
+    if not hasattr(flask.current_app, "arborist") or not flask.current_app.arborist:
         raise Forbidden(
             "this fence instance is not configured with arborist;"
             " this endpoint is unavailable"
         )
-    if "Authorization" not in flask.request.headers:
-        logger.debug("request missing Authorization header; treating as anonymous")
-        token = None
-    else:
-        token = get_jwt_header()
+    if not token:
+        if "Authorization" not in flask.request.headers:
+            logger.debug("request missing Authorization header; treating as anonymous")
+            token = None
+        else:
+            token = get_jwt_header()
 
     if not flask.current_app.arborist.auth_request(
         jwt=token,
@@ -53,8 +52,8 @@ def authorize(resource, method, constraints=None, check_signature=False):
     ):
         if check_signature:
             headers = dict(flask.request.headers)
-            method_s = flask.request.method 
-            path = flask.request.url #flask.request.path
+            method_s = flask.request.method
+            path = flask.request.url
             body = None
             if method_s in ['POST', 'PUT', 'PATCH']:
                 body = flask.request.get_json(silent=True)
@@ -62,7 +61,6 @@ def authorize(resource, method, constraints=None, check_signature=False):
             g3rm = Gen3RequestManager(headers=headers)
 
             if g3rm.is_gen3_signed():
-                # --- PUBLIC_KEY guard ---
                 public_key = config.get("AMANUENSIS_PUBLIC_KEY")
                 if not public_key:
                     logger.error(
@@ -72,16 +70,13 @@ def authorize(resource, method, constraints=None, check_signature=False):
                         "Missing PUBLIC_KEY — cannot validate signature"
                     )
 
-                # --- Prepare SignaturePayload ---
                 payload = SignaturePayload(
                     method=method_s,
                     path=path,
                     headers={
-                        "Gen3-Service": headers.get(
-                            "Gen3-Service"
-                        )
+                        "Gen3-Service": headers.get("Gen3-Service")
                     },
-                    body = json.dumps(body, separators=(",", ":")) if body is not None else ""
+                    body=json.dumps(body, separators=(",", ":")) if body is not None else ""
                 )
 
                 if not g3rm.valid_gen3_signature(payload, config):
@@ -113,7 +108,7 @@ def check_arborist_auth(resource, method, constraints=None, check_signature=Fals
     return decorator
 
 
-def can_user_get_task_token(task_token_type: str, expires_in: int) -> bool:
+def can_user_get_task_token(task_token_type: str, expires_in: int, token: str = None) -> bool:
     """
     Checks a requested expiration against the user's authz.
     Example: a user with access to `/services/fence/task-token/FOO/100` can request a
@@ -125,6 +120,7 @@ def can_user_get_task_token(task_token_type: str, expires_in: int) -> bool:
     Args:
         task_token_type (str): the type of task token being requested
         expires_in (int): the requested expiration in seconds
+        token (str): the user's token, used to check authz
 
     Returns:
         bool: True if the user is authorized to request a task token of the given type and expiration, False otherwise
@@ -148,7 +144,7 @@ def can_user_get_task_token(task_token_type: str, expires_in: int) -> bool:
     resource_path = f"/services/fence/task-token/{task_token_type}/{expires_in}"
 
     try:
-        authorize(resource=resource_path, method="create")
+        authorize(resource=resource_path, method="create", token=token)
         return True
     except Forbidden:
         return False
@@ -195,7 +191,6 @@ def remove_permission(username=None, policies=None):
     users = None
     if username is None:
         users = flask.current_app.arborist.get_users()
-        # {'users': [{'name': 'graglia01@gmail.com', 'groups': [], 'policies': [{'policy': 'login_no_access', 'expires_at': None}, {'policy': 'gearbox_admin', 'expires_at': None}]}, {'name': 'shea.maunsell@gmail.com', 'groups': [], 'policies': []}, {'name': 'slv@uchicago.edu', 'groups': [], 'policies': []}, {'name': 'furner.brian@gmail.com', 'groups': [], 'policies': []}, {'name': 'bkang.dev@gmail.com', 'groups': [], 'policies': []}, {'name': 'dvenckus@uchicago.edu', 'groups': [], 'policies': []}, {'name': 'lgraglia@uchicago.edu', 'groups': [], 'policies': [{'policy': 'login_no_access', 'expires_at': None}]}, {'name': 'shea@cluelessapp.com', 'groups': [], 'policies': [{'policy': 'login_no_access', 'expires_at': None}]}]}
         users = users.json["users"]
     else:
         user = flask.current_app.arborist.get_user(username)
@@ -229,4 +224,3 @@ def remove_permission(username=None, policies=None):
                             )
                         )
     return "200"
-

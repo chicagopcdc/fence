@@ -609,10 +609,18 @@ def _add_documents(driver, md):
                         text(
                             """\
                             INSERT INTO document (type, version, name, raw, formatted, required)
-                            VALUES ('{}', '{}', '{}', '{}', '{}', '{}')
+                            VALUES (:type, :version, :name, :raw, :formatted, :required)
                             ON CONFLICT (type, version)
-                            DO NOTHING;""".format(doc_v["type"], doc_v["version"], doc_v["name"], doc_v["raw"], doc_v["formatted"], doc_v["required"])
-                        )
+                            DO NOTHING;"""
+                        ),
+                        {
+                            "type": doc_v["type"],
+                            "version": doc_v["version"],
+                            "name": doc_v["name"],
+                            "raw": doc_v["raw"],
+                            "formatted": doc_v["formatted"],
+                            "required": doc_v["required"],
+                        },
                     )
                     session.commit()
             else:

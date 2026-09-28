@@ -358,22 +358,13 @@ class UserSyncer(object):
         self.id_patterns = []
 
 
-        self.logger.warning("projects Luca init init")
-        self.logger.warning(dbGaP)
-        self.logger.warning(DB)
-        self.logger.warning(project_mapping)
-        self.logger.warning(storage_credentials)
-        self.logger.warning(is_sync_from_dbgap_server)
-        self.logger.warning(sync_from_local_csv_dir)
-        self.logger.warning(sync_from_local_yaml_file)
-        self.logger.warning(db_session)
-        self.logger.warning(arborist)
-        self.logger.warning(json_from_api)
-
         if self.json_from_api:
-            self.logger.warning(self.json_from_api.get("project_to_resource"))
-            self.json_from_api["projects"] = self.adapt_json_object_permission(self.json_from_api.get("projects"))
-            self.json_from_api["user_abac"] = self.adapt_json_object_permission(self.json_from_api.get("user_abac"))
+            projects = self.json_from_api.get("projects")
+            user_abac = self.json_from_api.get("user_abac")
+            if projects is not None:
+                self.json_from_api["projects"] = self.adapt_json_object_permission(projects)
+            if user_abac is not None:
+                self.json_from_api["user_abac"] = self.adapt_json_object_permission(user_abac)
 
     def adapt_json_object_permission(self, projects):
         """
@@ -903,13 +894,15 @@ class UserSyncer(object):
             
     @staticmethod
     def sync_two_clients(phsids1, phsids2):
-
-        phsids2 = phsids1
+        if phsids1:
+            for k, v in phsids1.items():
+                phsids2[k] = v
 
     @staticmethod
     def sync_two_proj_resource(phsids1, phsids2):
-
-        phsids2 = phsids1
+        if phsids1:
+            for k, v in phsids1.items():
+                phsids2[k] = v
 
     def sync_to_db_and_storage_backend(
         self,
@@ -1737,18 +1730,6 @@ class UserSyncer(object):
             user_yaml.project_to_resource = self.json_from_api.get("project_to_resource")
 
         #TODO add sync clients
-        self.logger.warning("projects Luca test")
-        if self.json_from_api:
-            self.logger.warning(self.json_from_api)
-        self.logger.warning(user_projects)
-        self.logger.warning(user_yaml.user_abac)
-        self.logger.warning(user_info)
-        self.logger.warning(user_yaml.authz)
-        self.logger.warning(user_yaml.policies)
-        self.logger.warning(user_yaml.clients)
-        if self.json_from_api:
-            self.logger.warning(self.json_from_api.get("project_to_resource"))
-        self.logger.warning(user_yaml.project_to_resource)
 
 
         # Note: if there are multiple dbgap sftp servers configured
@@ -2201,9 +2182,6 @@ class UserSyncer(object):
                 )
 
             # update the project info with users from arborist
-            self.logger.warning("UPDATE USER")
-            self.logger.warning(arborist_user_projects)
-            self.logger.warning(user_projects)
             self.sync_two_phsids_dict(arborist_user_projects, user_projects)
 
 

@@ -366,8 +366,9 @@ def send_email_ses(body, to_emails, subject):
     AWS_ACCESS_KEY = config["AWS_SES"]["AWS_ACCESS_KEY"]
     AWS_SECRET_KEY = config["AWS_SES"]["AWS_SECRET_KEY"]
     region = config["AWS_SES"]["AWS_REGION"] if config["AWS_SES"]["AWS_REGION"] is not None else "us-east-1"
-    #TODO get a general team email for this
-    RECIPIENT = config["AWS_SES"]["RECIPIENT"] if config["AWS_SES"]["RECIPIENT"] is not None else "lgraglia@uchicago.edu"
+    RECIPIENT = config["AWS_SES"].get("RECIPIENT")
+    if not RECIPIENT:
+        raise NotFound("AWS SES recipient is not configured. Cannot send email.")
         
         # if not self._html:
         #     self._format = 'text'

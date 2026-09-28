@@ -666,9 +666,10 @@ def add_authz_all():
 
     # Check if username is present in the DB and is a registered user
     users = admin.get_users(current_app.scoped_session(), [username])
-    if len(users) == 0:
+    user_list = users.get("users", [])
+    if len(user_list) == 0:
         raise NotFound("User {} not found!".format(username))
-    elif len(users) > 1:
+    elif len(user_list) > 1:
         raise InternalError("Too many user with the same username: {}. check the DB".format(username))
 
 
@@ -865,7 +866,7 @@ def add_policies_to_client():
             client_id, policy_names
         )
     except ArboristError as e:
-        self.logger.info(
+        current_app.logger.info(
             "not granting policies {} to client with id `{}`; {}".format(
                 policy_names, client_id, str(e)
             )
@@ -897,6 +898,8 @@ def remove_policies_from_client():
 
     try:
         client = current_app.arborist.get_client(client_id)
+        if client is None:
+            raise ArboristError("Client '{}' not found in arborist".format(client_id))
         current_policies = client['policies']
         to_keep = list(set(current_policies) - set(policy_names))
         current_app.arborist.update_client(client_id, to_keep)
@@ -947,7 +950,7 @@ def create_client():
             client_id, policy_names
         )
     except ArboristError as e:
-        self.logger.info(
+        current_app.logger.info(
             "not creating client with id `{}`; {}".format(
                 client_id, str(e)
             )

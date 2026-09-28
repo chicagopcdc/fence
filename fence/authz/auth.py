@@ -81,7 +81,7 @@ def authorize(resource, method, constraints=None, check_signature=False):
                             "Gen3-Service"
                         )
                     },
-                    body = json.dumps(body, separators=(",", ":"))
+                    body = json.dumps(body, separators=(",", ":")) if body is not None else ""
                 )
 
                 if not g3rm.valid_gen3_signature(payload, config):

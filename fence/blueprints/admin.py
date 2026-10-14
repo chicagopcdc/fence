@@ -603,6 +603,7 @@ def list_policies():
         res = current_app.arborist.list_policies()
     return jsonify(res)
 
+
 @blueprint.route("/list_roles", methods=["GET"])
 @admin_login_required
 @enable_request_logging

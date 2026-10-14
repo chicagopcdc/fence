@@ -309,13 +309,13 @@ def test_get_user_noauth(client, db_session):
 # GET /list_policies test
 
 def test_list_policies(mock_arborist_requests, client, admin_user, encoded_admin_jwt):
-    mock_arborist_requests({"arborist/policy/": {"GET": ({"policies":
+    mock_arborist_requests(_with_admin_authz({"arborist/policy/": {"GET": ({"policies":
                 [{
                 "id":"test_admin",
                 "description":"",
                 "resource_paths":["/test_gateway"],
                 "role_ids":["test_user"]
-                }]}, 200) } } )
+                }]}, 200) } } ))
     r = client.get(
 
         "/admin/list_policies",
@@ -337,7 +337,7 @@ def test_list_policies(mock_arborist_requests, client, admin_user, encoded_admin
     assert policy["resource_paths"][0] == "/test_gateway"
 
 def test_list_policies_expand(mock_arborist_requests, client, admin_user, encoded_admin_jwt):
-    mock_arborist_requests({"arborist/policy/?expand": {"GET": ({
+    mock_arborist_requests(_with_admin_authz({"arborist/policy/?expand": {"GET": ({
         "policies": [{
         "id":"test_admin",
         "description":"",
@@ -360,7 +360,7 @@ def test_list_policies_expand(mock_arborist_requests, client, admin_user, encode
             ]
         }
     ]
-    }, 200) } })
+    }, 200) } }))
     r = client.get(
 
         "/admin/list_policies?expand=True",
@@ -385,13 +385,13 @@ def test_list_policies_expand(mock_arborist_requests, client, admin_user, encode
     assert permissions["action"]["service"] == ""
 
 def test_list_policies_invalid(mock_arborist_requests, client, admin_user, encoded_admin_jwt):
-    mock_arborist_requests({"arborist/policy/": {"GET": ({"policies":
+    mock_arborist_requests(_with_admin_authz({"arborist/policy/": {"GET": ({"policies":
         [{
         "id":"test_admin",
         "description":"",
         "resource_paths":["/test_gateway"],
         "role_ids":["test_user"]
-        }]}, 200) } } )
+        }]}, 200) } } ))
     r = client.get("/admin/list_policies?expand=invalid",
         headers={
 
@@ -405,6 +405,226 @@ def test_list_policies_invalid(mock_arborist_requests, client, admin_user, encod
     assert r.status_code == 400
 
 
+# GET /list_roles and /list_resources tests
+
+
+def _admin_headers(encoded_admin_jwt):
+    return {
+        "Authorization": "Bearer " + encoded_admin_jwt,
+        "Content-Type": "application/json",
+    }
+
+
+def _with_admin_authz(urls_to_responses):
+    """
+    admin_login_required asks arborist whether the caller holds
+    /services/fence/admin. Without that mocked every admin endpoint answers
+    404 before its own body ever runs.
+    """
+    return {
+        "arborist/auth/request": {"POST": ({"auth": True}, 200)},
+        **urls_to_responses,
+    }
+
+
+def test_list_roles(mock_arborist_requests, client, admin_user, encoded_admin_jwt):
+    mock_arborist_requests(
+        _with_admin_authz({
+            "arborist/role/": {
+                "GET": (
+                    {
+                        "roles": [
+                            {
+                                "id": "amanuensis_admin",
+                                "description": "",
+                                "permissions": [
+                                    {
+                                        "id": "amanuensis_admin_action",
+                                        "action": {
+                                            "service": "amanuensis",
+                                            "method": "*",
+                                        },
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                    200,
+                )
+            }
+        })
+    )
+    r = client.get("/admin/list_roles", headers=_admin_headers(encoded_admin_jwt))
+    assert r.status_code == 200
+    role = r.json["roles"][0]
+    assert role["id"] == "amanuensis_admin"
+    assert role["permissions"][0]["action"]["service"] == "amanuensis"
+
+
+def test_list_resources(mock_arborist_requests, client, admin_user, encoded_admin_jwt):
+    mock_arborist_requests(
+        _with_admin_authz({
+            "arborist/resource": {
+                "GET": (
+                    {
+                        "resources": [
+                            {"path": "/services/amanuensis", "name": "amanuensis"}
+                        ]
+                    },
+                    200,
+                )
+            }
+        })
+    )
+    r = client.get("/admin/list_resources", headers=_admin_headers(encoded_admin_jwt))
+    assert r.status_code == 200
+    assert r.json["resources"][0]["path"] == "/services/amanuensis"
+
+
+# DELETE /remove_policy tests
+
+
+def test_remove_policy(mock_arborist_requests, client, admin_user, encoded_admin_jwt):
+    mock_arborist_requests(
+        _with_admin_authz({
+            "arborist/policy/services.amanuensis-admin": {
+                "GET": ({"id": "services.amanuensis-admin"}, 200),
+                "DELETE": ("", 204),
+            }
+        })
+    )
+    r = client.delete(
+        "/admin/remove_policy/services.amanuensis-admin",
+        headers=_admin_headers(encoded_admin_jwt),
+    )
+    assert r.status_code == 200
+    assert r.json["deleted"] == "services.amanuensis-admin"
+
+
+def test_remove_policy_not_found(
+    mock_arborist_requests, client, admin_user, encoded_admin_jwt
+):
+    """A policy that isn't there should say so rather than report success."""
+    mock_arborist_requests(
+        _with_admin_authz(
+            {"arborist/policy/nope": {"GET": ("not found", 404), "DELETE": ("", 204)}}
+        )
+    )
+    r = client.delete(
+        "/admin/remove_policy/nope", headers=_admin_headers(encoded_admin_jwt)
+    )
+    assert r.status_code == 404
+
+
+def test_remove_policy_noauth(client):
+    r = client.delete("/admin/remove_policy/services.amanuensis-admin")
+    assert r.status_code == 401
+
+
+# DELETE /remove_role tests
+
+
+def _role_mocks(policies):
+    return _with_admin_authz({
+        "arborist/role/": {"GET": ({"roles": [{"id": "amanuensis_admin"}]}, 200)},
+        "arborist/role/amanuensis_admin": {"DELETE": ("", 204)},
+        "arborist/policy/?expand": {"GET": ({"policies": policies}, 200)},
+    })
+
+
+def test_remove_role_unused(
+    mock_arborist_requests, client, admin_user, encoded_admin_jwt
+):
+    mock_arborist_requests(_role_mocks([]))
+    r = client.delete(
+        "/admin/remove_role/amanuensis_admin",
+        headers=_admin_headers(encoded_admin_jwt),
+    )
+    assert r.status_code == 200
+    assert r.json["deleted"] == "amanuensis_admin"
+    assert r.json["affected_policies"] == []
+
+
+def test_remove_role_refuses_while_a_policy_uses_it(
+    mock_arborist_requests, client, admin_user, encoded_admin_jwt
+):
+    """
+    arborist cascades policy_role on delete, so this would silently strip the
+    role from the policy and leave it granting nothing. Refuse and name the
+    policy instead.
+    """
+    mock_arborist_requests(
+        _role_mocks(
+            [
+                {
+                    "id": "services.amanuensis-admin",
+                    "roles": [{"id": "amanuensis_admin"}],
+                }
+            ]
+        )
+    )
+    r = client.delete(
+        "/admin/remove_role/amanuensis_admin",
+        headers=_admin_headers(encoded_admin_jwt),
+    )
+    assert r.status_code == 400
+    # fence renders errors as an HTML page, so the policy has to be named in the body
+    assert "services.amanuensis-admin" in r.text
+
+
+def test_remove_role_force_deletes_despite_policies(
+    mock_arborist_requests, client, admin_user, encoded_admin_jwt
+):
+    mock_arborist_requests(
+        _role_mocks(
+            [
+                {
+                    "id": "services.amanuensis-admin",
+                    "roles": [{"id": "amanuensis_admin"}],
+                }
+            ]
+        )
+    )
+    r = client.delete(
+        "/admin/remove_role/amanuensis_admin?force=true",
+        headers=_admin_headers(encoded_admin_jwt),
+    )
+    assert r.status_code == 200
+    assert r.json["affected_policies"] == ["services.amanuensis-admin"]
+
+
+def test_remove_role_ignores_policies_using_other_roles(
+    mock_arborist_requests, client, admin_user, encoded_admin_jwt
+):
+    mock_arborist_requests(
+        _role_mocks([{"id": "some.other-policy", "roles": [{"id": "another_role"}]}])
+    )
+    r = client.delete(
+        "/admin/remove_role/amanuensis_admin",
+        headers=_admin_headers(encoded_admin_jwt),
+    )
+    assert r.status_code == 200
+    assert r.json["affected_policies"] == []
+
+
+def test_remove_role_not_found(
+    mock_arborist_requests, client, admin_user, encoded_admin_jwt
+):
+    mock_arborist_requests(
+        _with_admin_authz(
+            {"arborist/role/": {"GET": ({"roles": [{"id": "something_else"}]}, 200)}}
+        )
+    )
+    r = client.delete(
+        "/admin/remove_role/amanuensis_admin",
+        headers=_admin_headers(encoded_admin_jwt),
+    )
+    assert r.status_code == 404
+
+
+def test_remove_role_noauth(client):
+    r = client.delete("/admin/remove_role/amanuensis_admin")
+    assert r.status_code == 401
 
 
 # POST /user tests

@@ -8,6 +8,7 @@ from fence.resources.audit.utils import logger as utils_logger
 import logging
 from unittest.mock import Mock, patch
 import mock
+from gen3authz.client.arborist.client import ArboristClient
 from fence.config import config
 from fence.models import (
     Bucket,
@@ -479,6 +480,29 @@ def test_list_resources(mock_arborist_requests, client, admin_user, encoded_admi
     r = client.get("/admin/list_resources", headers=_admin_headers(encoded_admin_jwt))
     assert r.status_code == 200
     assert r.json["resources"][0]["path"] == "/services/amanuensis"
+
+
+def test_list_resources_exclude(
+    mock_arborist_requests, client, admin_user, encoded_admin_jwt
+):
+    """The paths in ?exclude reach arborist, so a huge subtree can be left out."""
+    mock_arborist_requests(_with_admin_authz({}))
+    with mock.patch.object(
+        ArboristClient, "list_resources", return_value={"resources": []}
+    ) as list_resources:
+        r = client.get(
+            "/admin/list_resources?exclude=/programs/pcdc&exclude=/other",
+            headers=_admin_headers(encoded_admin_jwt),
+        )
+        assert r.status_code == 200
+        list_resources.assert_called_once_with(exclude=["/programs/pcdc", "/other"])
+
+        list_resources.reset_mock()
+        r = client.get(
+            "/admin/list_resources", headers=_admin_headers(encoded_admin_jwt)
+        )
+        assert r.status_code == 200
+        list_resources.assert_called_once_with()
 
 
 # DELETE /remove_policy tests

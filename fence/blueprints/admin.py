@@ -629,7 +629,14 @@ def list_resources():
     Call this endpoint: `curl -H "Authorization: Bearer <access_token>" <hostname>/user/admin/list_resources`
 
     The counterpart of list_roles: a policy names resource paths too.
+
+    Pass `?exclude=/some/path` (repeatable) to leave out everything beneath that
+    path; the path itself is still listed. Listing a very large tree in full can
+    take longer than the arborist timeout, so exclude the big subtrees.
     """
+    exclude = request.args.getlist("exclude")
+    if exclude:
+        return jsonify(current_app.arborist.list_resources(exclude=exclude))
     return jsonify(current_app.arborist.list_resources())
 
 
